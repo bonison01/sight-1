@@ -22,7 +22,7 @@ export interface Product {
   featured: boolean | null;
   created_at: string;
   updated_at: string;
-
+  hsn_code?: string | null;
   variants?: Variant[];  // NEW
 }
 export interface VariantType {

@@ -1,3 +1,4 @@
+//Users/apple/Documents/GitHub/sight/src/integrations/supabase/types.ts
 export type Json =
   | string
   | number
@@ -50,7 +51,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
-          },
+          }
         ]
       }
 
@@ -150,7 +151,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
-          },
+          }
         ]
       }
 
@@ -193,7 +194,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
-          },
+          }
         ]
       }
 
@@ -316,7 +317,6 @@ export type Database = {
         Relationships: []
       }
 
-      // ✅ NEW TABLE ADDED
       product_variants: {
         Row: {
           id: string
@@ -459,8 +459,173 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
-          },
+          }
         ]
+      }
+
+      /* ============================================================
+         🔥 NEW TABLE 1: INVOICES
+      ============================================================ */
+      invoices: {
+        Row: {
+          id: string
+          user_id: string | null
+          customer_name: string
+          customer_phone: string | null
+          customer_address: string | null
+          invoice_number: string
+          subtotal: number
+          tax_amount: number | null
+          discount_amount: number | null
+          grand_total: number
+          paid_amount: number | null
+          status: "unpaid" | "partial" | "paid"
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          customer_name: string
+          customer_phone?: string | null
+          customer_address?: string | null
+          invoice_number: string
+          subtotal: number
+          tax_amount?: number | null
+          discount_amount?: number | null
+          grand_total: number
+          paid_amount?: number | null
+          status?: "unpaid" | "partial" | "paid"
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          customer_name?: string
+          customer_phone?: string | null
+          customer_address?: string | null
+          invoice_number?: string
+          subtotal?: number
+          tax_amount?: number | null
+          discount_amount?: number | null
+          grand_total?: number
+          paid_amount?: number | null
+          status?: "unpaid" | "partial" | "paid"
+          created_at?: string | null
+        }
+        Relationships: []
+      }
+
+      /* ============================================================
+         🔥 NEW TABLE 2: INVOICE ITEMS
+      ============================================================ */
+      invoice_items: {
+        Row: {
+          id: string
+          invoice_id: string
+          item_code: string | null
+          product_id: string | null
+          variant_id: string | null
+          quantity: number
+          rate: number
+          amount: number
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          invoice_id: string
+          item_code?: string | null
+          product_id?: string | null
+          variant_id?: string | null
+          quantity: number
+          rate: number
+          amount: number
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          invoice_id?: string
+          item_code?: string | null
+          product_id?: string | null
+          variant_id?: string | null
+          quantity?: number
+          rate?: number
+          amount?: number
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+
+      /* ============================================================
+         🔥 NEW TABLE 3: INVOICE BRANDING
+      ============================================================ */
+      invoice_branding: {
+        Row: {
+          id: string
+          user_id: string
+          payment_details: string | null
+          signature_url: string | null
+          stamp_url: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          payment_details?: string | null
+          signature_url?: string | null
+          stamp_url?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          payment_details?: string | null
+          signature_url?: string | null
+          stamp_url?: string | null
+          created_at?: string | null
+        }
+        Relationships: []
+      }
+
+      /* ============================================================
+         🔥 NEW TABLE 4: COMPANY PROFILE
+      ============================================================ */
+      company_profile: {
+        Row: {
+          id: string
+          company_name: string
+          address: string | null
+          phone: string | null
+          email: string | null
+          logo_url: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          company_name: string
+          address?: string | null
+          phone?: string | null
+          email?: string | null
+          logo_url?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          company_name?: string
+          address?: string | null
+          phone?: string | null
+          email?: string | null
+          logo_url?: string | null
+          created_at?: string | null
+        }
+        Relationships: []
       }
     }
 

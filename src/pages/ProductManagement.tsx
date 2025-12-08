@@ -18,7 +18,7 @@ import ProductForm from "@/components/ProductManagementComponents/ProductForm";
 import CSVUpload from "@/components/ProductManagementComponents/CSVUpload";
 
 import InventoryManagement from "@/components/admin/InventoryManagement";
-import Invoicing from "@/components/admin/Invoicing";
+import InvoicingTabs from "@/components/admin/InvoicingTabs";
 import InvoiceArchive from "@/components/admin/InvoiceArchive";
 import Customers from "@/components/admin/Customers";
 
@@ -37,6 +37,19 @@ const ProductManagement = () => {
   const { user, isAdmin, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // ------------------------------
+  // ⭐ PERSISTENT TAB STATE HERE ⭐
+  // ------------------------------
+  const [activeTab, setActiveTab] = useState(
+    localStorage.getItem("admin-active-tab") || "orders"
+  );
+
+  useEffect(() => {
+    localStorage.setItem("admin-active-tab", activeTab);
+  }, [activeTab]);
+
+  // ------------------------------
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -103,7 +116,6 @@ const ProductManagement = () => {
       await signOut();
       navigate("/");
     } catch (error) {
-      console.error("Error signing out:", error);
       toast({
         title: "Error",
         description: "Failed to sign out",
@@ -126,7 +138,6 @@ const ProductManagement = () => {
       .eq("product_id", product.id);
 
     if (error) {
-      console.error("Error fetching variants:", error);
       toast({
         title: "Error",
         description: "Failed to fetch product variants",
@@ -144,16 +155,15 @@ const ProductManagement = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this product?")) return;
+    if (!window.confirm("Delete this product?")) return;
 
     try {
       const { error } = await supabase.from("products").delete().eq("id", id);
       if (error) throw error;
 
       setProducts(products.filter((product) => product.id !== id));
-      toast({ title: "Success", description: "Product deleted successfully" });
-    } catch (error: any) {
-      console.error("Error deleting product:", error);
+      toast({ title: "Success", description: "Product deleted." });
+    } catch (error) {
       toast({
         title: "Error",
         description: "Failed to delete product",
@@ -167,19 +177,27 @@ const ProductManagement = () => {
       const now = new Date().toISOString();
 
       const productData = {
-        ...newProduct,
-        category: newProduct.category || null,
-        image_url: newProductImages.length > 0 ? newProductImages[0] : null,
-        image_urls: newProductImages.length > 1 ? newProductImages.slice(1) : null,
+        name: newProduct.name ?? "",
+        price: newProduct.price ?? 0,
+        description: newProduct.description ?? "",
+        offer_price: newProduct.offer_price ?? null,
+        category: newProduct.category ?? null,
+        features: newProduct.features ?? null,
+        ingredients: newProduct.ingredients ?? null,
+        offers: newProduct.offers ?? null,
+        stock_quantity: newProduct.stock_quantity ?? 0,
+        is_active: newProduct.is_active ?? true,
+        featured: newProduct.featured ?? false,
+        image_url: newProductImages[0] || null,
+        image_urls:
+          newProductImages.length > 1 ? newProductImages.slice(1) : null,
         created_at: now,
         updated_at: now,
       };
 
-      const { id, variants, ...insertData } = productData as any;
-
       const { data, error } = await supabase
         .from("products")
-        .insert([insertData])
+        .insert([productData])
         .select();
 
       if (error) throw error;
@@ -188,34 +206,27 @@ const ProductManagement = () => {
       if (createdProduct && newProductVariants.length > 0) {
         const variantInserts = newProductVariants.map((v) => ({
           product_id: createdProduct.id,
-          color: v.color || null,
-          size: v.size || null,
-          price: v.price || null,
-          stock_quantity: v.stock_quantity || 0,
-          image_url: v.image_url || null,
+          color: v.color ?? null,
+          size: v.size ?? null,
+          price: v.price ?? null,
+          stock_quantity: v.stock_quantity ?? 0,
+          image_url: v.image_url ?? null,
           created_at: now,
         }));
 
-        const { error: variantError } = await supabase
-          .from("product_variants")
-          .insert(variantInserts);
-
-        if (variantError) throw variantError;
+        await supabase.from("product_variants").insert(variantInserts);
       }
 
-      if (createdProduct) {
-        setProducts([...products, createdProduct]);
-      }
+      setProducts([...products, createdProduct]);
       setIsCreating(false);
       setNewProductImages([]);
       setNewProductVariants([]);
 
-      toast({ title: "Success", description: "Product created successfully" });
-    } catch (error: any) {
-      console.error("Error creating product or variants:", error);
+      toast({ title: "Success", description: "Product created." });
+    } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to create product or variants",
+        description: "Failed to create product",
         variant: "destructive",
       });
     }
@@ -223,30 +234,28 @@ const ProductManagement = () => {
 
   const handleUpdate = async () => {
     if (!editingProduct) return;
+
     try {
       const now = new Date().toISOString();
-
       const updateData = {
         ...editingProduct,
-        category: editingProduct.category || null,
         image_url: editingImages[0] || null,
         image_urls: editingImages.slice(1) || null,
         updated_at: now,
       };
 
-      const { error } = await supabase
+      await supabase
         .from("products")
         .update(updateData)
         .eq("id", editingProduct.id);
 
-      if (error) throw error;
-
       for (const variant of editingVariants) {
         const isUUID =
-          typeof variant.id === "string" && /^[0-9a-fA-F-]{36}$/.test(variant.id);
+          typeof variant.id === "string" &&
+          /^[0-9a-fA-F-]{36}$/.test(variant.id);
 
         if (variant.id && isUUID) {
-          const { error: updateError } = await supabase
+          await supabase
             .from("product_variants")
             .update({
               color: variant.color || null,
@@ -257,37 +266,29 @@ const ProductManagement = () => {
               updated_at: now,
             })
             .eq("id", variant.id);
-          if (updateError) throw updateError;
         } else {
-          const { error: insertError } = await supabase
-            .from("product_variants")
-            .insert([
-              {
-                product_id: editingProduct.id,
-                color: variant.color || null,
-                size: variant.size || null,
-                price: variant.price || null,
-                stock_quantity: variant.stock_quantity || 0,
-                image_url: variant.image_url || null,
-                created_at: now,
-              },
-            ]);
-          if (insertError) throw insertError;
+          await supabase.from("product_variants").insert([
+            {
+              product_id: editingProduct.id,
+              color: variant.color || null,
+              size: variant.size || null,
+              price: variant.price || null,
+              stock_quantity: variant.stock_quantity || 0,
+              image_url: variant.image_url || null,
+              created_at: now,
+            },
+          ]);
         }
       }
 
       await fetchProducts();
       handleCancelEdit();
 
-      toast({
-        title: "Success",
-        description: "Product and variants updated successfully",
-      });
-    } catch (error: any) {
-      console.error("Error updating product and variants:", error);
+      toast({ title: "Success", description: "Product updated." });
+    } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to update product or variants",
+        description: "Failed to update product",
         variant: "destructive",
       });
     }
@@ -301,10 +302,8 @@ const ProductManagement = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Package className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p>Loading admin dashboard...</p>
-        </div>
+        <Package className="h-8 w-8 animate-spin mx-auto mb-4" />
+        <p>Loading admin dashboard...</p>
       </div>
     );
   }
@@ -314,135 +313,136 @@ const ProductManagement = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-              <p className="text-gray-600 mt-1">
-                Manage products, orders, inventory, invoices & customers
-              </p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Button onClick={() => navigate("/")} variant="outline">
-                <Home className="h-4 w-4 mr-2" /> Home
-              </Button>
-              <Button onClick={handleSignOut} variant="outline">
-                <LogOut className="h-4 w-4 mr-2" /> Sign Out
-              </Button>
-            </div>
+        <div className="max-w-7xl mx-auto px-4 lg:px-8 py-6 flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+            <p className="text-gray-600 mt-1">
+              Manage products, orders, inventory, invoices & customers
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <Button variant="outline" onClick={() => navigate("/")}>
+              <Home className="h-4 w-4 mr-2" /> Home
+            </Button>
+            <Button variant="outline" onClick={handleSignOut}>
+              <LogOut className="h-4 w-4 mr-2" /> Sign Out
+            </Button>
           </div>
         </div>
       </div>
 
       <main className="w-full py-6 px-4">
-        <div className="w-full">
-         <Tabs defaultValue="orders" className="space-y-6">
+        {/* ------------------------------ */}
+        {/* ⭐ TABS WITH PERSISTENT VALUE ⭐ */}
+        {/* ------------------------------ */}
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v)}
+          className="space-y-6"
+        >
+          <TabsList>
+            <TabsTrigger value="orders">Orders</TabsTrigger>
+            <TabsTrigger value="products">Products</TabsTrigger>
+            <TabsTrigger value="inventory">Inventory</TabsTrigger>
+            <TabsTrigger value="sales">Sales & Billing</TabsTrigger>
+            <TabsTrigger value="invoice-list">Invoice Archive</TabsTrigger>
+            <TabsTrigger value="customers">Customers</TabsTrigger>
+            <TabsTrigger value="banner">Banner</TabsTrigger>
+          </TabsList>
 
-  <TabsList>
-    <TabsTrigger value="orders">Orders</TabsTrigger>
-    <TabsTrigger value="products">Products</TabsTrigger>
-    <TabsTrigger value="inventory">Inventory</TabsTrigger>
-    <TabsTrigger value="sales">Sales & Billing</TabsTrigger>
-    <TabsTrigger value="invoice-list">Invoice Archive</TabsTrigger>
-    <TabsTrigger value="customers">Customers</TabsTrigger>
-    <TabsTrigger value="banner">Banner</TabsTrigger>
-  </TabsList>
+          <TabsContent value="orders">
+            <OrderManagement />
+          </TabsContent>
 
-  <TabsContent value="orders" forceMount className="data-[state=inactive]:hidden">
-    <OrderManagement />
-  </TabsContent>
-
-  <TabsContent value="products" forceMount className="data-[state=inactive]:hidden">
-    <div className="flex justify-between items-center mb-6">
-      <h2 className="text-2xl font-bold text-gray-900">Products</h2>
-      <div className="flex items-center space-x-2">
-        <Button onClick={() => setShowCSVUpload(true)} variant="outline">
-          <Upload className="h-4 w-4 mr-2" /> Bulk Upload
-        </Button>
-        <Button onClick={() => setIsCreating(true)}>
-          <Plus className="h-4 w-4 mr-2" /> Add Product
-        </Button>
-      </div>
-    </div>
-
-    <ProductList
-      products={products}
-      onEdit={handleEdit}
-      onDelete={handleDelete}
-      loading={loadingProducts}
-    />
-  </TabsContent>
-
-  <TabsContent value="inventory" forceMount className="data-[state=inactive]:hidden">
-    <InventoryManagement />
-  </TabsContent>
-
-  <TabsContent value="sales" forceMount className="data-[state=inactive]:hidden">
-    <Invoicing />
-  </TabsContent>
-
-  <TabsContent value="invoice-list" forceMount className="data-[state=inactive]:hidden">
-    <InvoiceArchive />
-  </TabsContent>
-
-  <TabsContent value="customers" forceMount className="data-[state=inactive]:hidden">
-    <Customers />
-  </TabsContent>
-
-  <TabsContent value="banner" forceMount className="data-[state=inactive]:hidden">
-    <BannerManagement />
-  </TabsContent>
-</Tabs>
-
-
-          {showCSVUpload && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center">
-              <div className="relative p-4 w-full max-w-2xl">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowCSVUpload(false)}
-                  className="absolute top-2 right-2 z-10"
-                >
-                  ×
+          <TabsContent value="products">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Products</h2>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowCSVUpload(true)}>
+                  <Upload className="h-4 w-4 mr-2" /> Bulk Upload
                 </Button>
-                <CSVUpload onProductsUploaded={handleCSVProductsUploaded} />
+                <Button onClick={() => setIsCreating(true)}>
+                  <Plus className="h-4 w-4 mr-2" /> Add Product
+                </Button>
               </div>
             </div>
-          )}
 
-          {editingProduct && (
-            <ProductForm
-              product={editingProduct}
-              images={editingImages}
-              variants={editingVariants}
-              onProductChange={setEditingProduct}
-              onImagesChange={setEditingImages}
-              onVariantsChange={setEditingVariants}
-              onSave={handleUpdate}
-              onCancel={handleCancelEdit}
-              isEditing={true}
+            <ProductList
+              products={products}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              loading={loadingProducts}
             />
-          )}
+          </TabsContent>
 
-          {isCreating && (
-            <ProductForm
-              product={newProduct}
-              images={newProductImages}
-              variants={newProductVariants}
-              onProductChange={setNewProduct}
-              onImagesChange={setNewProductImages}
-              onVariantsChange={setNewProductVariants}
-              onSave={handleCreate}
-              onCancel={() => {
-                setIsCreating(false);
-                setNewProductImages([]);
-                setNewProductVariants([]);
-              }}
-              isEditing={false}
-            />
-          )}
-        </div>
+          <TabsContent value="inventory">
+            <InventoryManagement />
+          </TabsContent>
+
+          <TabsContent value="sales">
+            <InvoicingTabs />
+          </TabsContent>
+
+          <TabsContent value="invoice-list">
+            <InvoiceArchive />
+          </TabsContent>
+
+          <TabsContent value="customers">
+            <Customers />
+          </TabsContent>
+
+          <TabsContent value="banner">
+            <BannerManagement />
+          </TabsContent>
+        </Tabs>
+
+        {showCSVUpload && (
+          <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+            <div className="relative p-6 bg-white rounded shadow-xl max-w-2xl w-full">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCSVUpload(false)}
+                className="absolute top-2 right-2"
+              >
+                ×
+              </Button>
+              <CSVUpload onProductsUploaded={handleCSVProductsUploaded} />
+            </div>
+          </div>
+        )}
+
+        {editingProduct && (
+          <ProductForm
+            product={editingProduct}
+            images={editingImages}
+            variants={editingVariants}
+            onProductChange={setEditingProduct}
+            onImagesChange={setEditingImages}
+            onVariantsChange={setEditingVariants}
+            onSave={handleUpdate}
+            onCancel={handleCancelEdit}
+            isEditing={true}
+          />
+        )}
+
+        {isCreating && (
+          <ProductForm
+            product={newProduct}
+            images={newProductImages}
+            variants={newProductVariants}
+            onProductChange={setNewProduct}
+            onImagesChange={setNewProductImages}
+            onVariantsChange={setNewProductVariants}
+            onSave={handleCreate}
+            onCancel={() => {
+              setIsCreating(false);
+              setNewProductImages([]);
+              setNewProductVariants([]);
+            }}
+            isEditing={false}
+          />
+        )}
       </main>
     </div>
   );

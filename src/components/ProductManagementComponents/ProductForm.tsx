@@ -40,9 +40,8 @@ export interface VariantInput {
   size?: string | null;
   stock_quantity?: number | null;
   image_url?: string | null;
-  price?: number | null | undefined; // allow assignments, even if unused
+  price?: number | null | undefined;
 }
-
 
 export interface ProductFormProps {
   product: Partial<Product>;
@@ -69,20 +68,21 @@ const ProductForm: React.FC<ProductFormProps> = ({
   isEditing,
   saving = false,
 }) => {
+
+  // ADD VARIANT
   const addVariant = () => {
-  const newVariant: VariantInput = {
-    id: Date.now().toString(),
-    size: sizes[0],
-    color: colors[0],
-    stock_quantity: 0,
-    price: null,
-    image_url: null,
+    const newVariant: VariantInput = {
+      id: Date.now().toString(),
+      size: sizes[0],
+      color: colors[0],
+      stock_quantity: 0,
+      price: null,
+      image_url: null,
+    };
+    onVariantsChange([...variants, newVariant]);
   };
-  onVariantsChange([...variants, newVariant]);
-};
 
-
-
+  // UPDATE VARIANT
   const updateVariant = (id: string, updatedFields: Partial<VariantInput>) => {
     onVariantsChange(
       variants.map((variant) =>
@@ -91,6 +91,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     );
   };
 
+  // REMOVE VARIANT
   const removeVariant = (id: string) => {
     onVariantsChange(variants.filter((variant) => variant.id !== id));
   };
@@ -99,6 +100,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
       <div className="relative p-4 w-full max-w-2xl h-full md:h-auto">
         <Card className="relative max-h-screen overflow-y-auto">
+          
           <Button
             variant="ghost"
             size="sm"
@@ -111,15 +113,14 @@ const ProductForm: React.FC<ProductFormProps> = ({
           <CardHeader>
             <CardTitle>{isEditing ? 'Edit Product' : 'Create Product'}</CardTitle>
             <CardDescription>
-              {isEditing
-                ? 'Update product details'
-                : 'Add a new product to your inventory'}
+              {isEditing ? 'Update product details' : 'Add a new product to your inventory'}
             </CardDescription>
           </CardHeader>
 
           <CardContent>
             <div className="grid gap-4">
 
+              {/* Image Upload */}
               <ImageUpload
                 images={images}
                 onImagesChange={onImagesChange}
@@ -127,6 +128,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 maxSizePerImageMB={2}
               />
 
+              {/* PRODUCT NAME */}
               <div>
                 <Label htmlFor="name">Product Name</Label>
                 <Input
@@ -139,6 +141,23 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 />
               </div>
 
+              {/* ✅ NEW FIELD: HSN CODE */}
+              <div>
+                <Label htmlFor="hsn_code">HSN Code</Label>
+                <Input
+                  id="hsn_code"
+                  value={product.hsn_code || ""}
+                  onChange={(e) =>
+                    onProductChange({
+                      ...product,
+                      hsn_code: e.target.value,
+                    })
+                  }
+                  placeholder="Enter HSN Code"
+                />
+              </div>
+
+              {/* DESCRIPTION */}
               <div>
                 <Label htmlFor="description">Description</Label>
                 <Textarea
@@ -151,6 +170,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 />
               </div>
 
+              {/* PRICE */}
               <div>
                 <Label htmlFor="price">Price</Label>
                 <Input
@@ -168,6 +188,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 />
               </div>
 
+              {/* OFFER PRICE */}
               <div>
                 <Label htmlFor="offer_price">Offer Price</Label>
                 <Input
@@ -187,16 +208,13 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 />
               </div>
 
-              {/* ENUM-safe category */}
+              {/* CATEGORY */}
               <div>
                 <Label htmlFor="category">Category</Label>
                 <Select
                   value={product.category || ''}
                   onValueChange={(value) =>
-                    onProductChange({
-                      ...product,
-                      category: value,
-                    })
+                    onProductChange({ ...product, category: value })
                   }
                 >
                   <SelectTrigger>
@@ -212,94 +230,90 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 </Select>
               </div>
 
+              {/* VARIANTS */}
               <div className="space-y-4">
-  <Label>Variants</Label>
+                <Label>Variants</Label>
 
-  {variants.length === 0 && (
-    <p className="text-sm text-gray-500">
-      No variants added yet.
-    </p>
-  )}
+                {variants.length === 0 && (
+                  <p className="text-sm text-gray-500">No variants added yet.</p>
+                )}
 
-  {variants.map((variant) => (
-    <div
-      key={variant.id}
-      className="grid grid-cols-4 gap-2 items-center border p-2 rounded-md"
-    >
-      <Select
-        value={variant.size || ''}
-        onValueChange={(value) =>
-          updateVariant(variant.id!, { size: value })
-        }
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Size" />
-        </SelectTrigger>
-        <SelectContent>
-          {sizes.map((size) => (
-            <SelectItem key={size} value={size}>
-              {size}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+                {variants.map((variant) => (
+                  <div
+                    key={variant.id}
+                    className="grid grid-cols-4 gap-2 items-center border p-2 rounded-md"
+                  >
+                    <Select
+                      value={variant.size || ''}
+                      onValueChange={(value) =>
+                        updateVariant(variant.id!, { size: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Size" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sizes.map((size) => (
+                          <SelectItem key={size} value={size}>
+                            {size}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-      <Select
-        value={variant.color || ''}
-        onValueChange={(value) =>
-          updateVariant(variant.id!, { color: value })
-        }
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Color" />
-        </SelectTrigger>
-        <SelectContent>
-          {colors.map((color) => (
-            <SelectItem key={color} value={color}>
-              {color}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+                    <Select
+                      value={variant.color || ''}
+                      onValueChange={(value) =>
+                        updateVariant(variant.id!, { color: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Color" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {colors.map((color) => (
+                          <SelectItem key={color} value={color}>
+                            {color}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-      <div>
-        <Label className="text-xs">Stock Quantity</Label>
-        <Input
-          type="number"
-          placeholder="Stock quantity"
-          value={variant.stock_quantity ?? ''}
-          onChange={(e) =>
-            updateVariant(variant.id!, {
-              stock_quantity: parseInt(e.target.value) || 0,
-            })
-          }
-        />
-      </div>
+                    <div>
+                      <Label className="text-xs">Stock Quantity</Label>
+                      <Input
+                        type="number"
+                        placeholder="Stock quantity"
+                        value={variant.stock_quantity ?? ''}
+                        onChange={(e) =>
+                          updateVariant(variant.id!, {
+                            stock_quantity: parseInt(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </div>
 
-      <Button
-        variant="destructive"
-        size="sm"
-        onClick={() => removeVariant(variant.id!)}
-      >
-        Remove
-      </Button>
-    </div>
-  ))}
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => removeVariant(variant.id!)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
 
-  <Button variant="outline" onClick={addVariant}>
-    + Add Variant
-  </Button>
-</div>
+                <Button variant="outline" onClick={addVariant}>
+                  + Add Variant
+                </Button>
+              </div>
 
-
+              {/* SAVE BUTTON */}
               <Button onClick={onSave} disabled={saving}>
                 <Save className="h-4 w-4 mr-2" />
-                {saving
-                  ? 'Saving...'
-                  : isEditing
-                  ? 'Update Product'
-                  : 'Create Product'}
+                {saving ? 'Saving...' : isEditing ? 'Update Product' : 'Create Product'}
               </Button>
+
             </div>
           </CardContent>
         </Card>
