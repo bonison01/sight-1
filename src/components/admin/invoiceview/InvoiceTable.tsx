@@ -124,6 +124,7 @@ export default function InvoiceTable({
             <table className="w-full text-xs md:text-sm">
               <thead className="bg-gray-100 border-b text-left">
                 <tr>
+                  <th className="p-2">Date</th>
                   <th className="p-2">Invoice</th>
                   <th className="p-2">Customer</th>
                   <th className="p-2">Total</th>
@@ -143,6 +144,11 @@ export default function InvoiceTable({
 
                   return (
                     <tr key={inv.id} className="border-b">
+                      {/* <td className="p-2">{inv.created_at}</td> */}
+                      <td className="p-2">
+  {new Date(inv.created_at).toLocaleDateString("en-CA")}
+</td>
+
                       <td className="p-2">{inv.invoice_number}</td>
                       <td className="p-2">{inv.customer_name}</td>
                       <td className="p-2">₹{total.toFixed(2)}</td>

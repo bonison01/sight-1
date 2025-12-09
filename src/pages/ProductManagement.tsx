@@ -33,31 +33,29 @@ interface VariantInput {
   image_url?: string | null;
 }
 
-const ProductManagement = () => {
+export default function ProductManagement() {
   const { user, isAdmin, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // ------------------------------
-  // ⭐ PERSISTENT TAB STATE HERE ⭐
-  // ------------------------------
-  const [activeTab, setActiveTab] = useState(
-    localStorage.getItem("admin-active-tab") || "orders"
-  );
-
+  // persist selected tab
+  const [activeTab, setActiveTab] = useState(localStorage.getItem("admin-active-tab") || "orders");
   useEffect(() => {
     localStorage.setItem("admin-active-tab", activeTab);
   }, [activeTab]);
 
-  // ------------------------------
-
+  // products state
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+
+  // edit/create state
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingImages, setEditingImages] = useState<string[]>([]);
   const [editingVariants, setEditingVariants] = useState<VariantInput[]>([]);
+  const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [showCSVUpload, setShowCSVUpload] = useState(false);
+
   const [newProductImages, setNewProductImages] = useState<string[]>([]);
   const [newProductVariants, setNewProductVariants] = useState<VariantInput[]>([]);
 
@@ -70,6 +68,7 @@ const ProductManagement = () => {
     image_url: null,
     image_urls: null,
     category: null,
+    hsn_code: null,
     features: null,
     ingredients: null,
     offers: null,
@@ -81,107 +80,93 @@ const ProductManagement = () => {
   });
 
   useEffect(() => {
-    if (!loading && (!user || !isAdmin)) {
-      navigate("/auth?admin=true");
-    }
+    if (!loading && (!user || !isAdmin)) navigate("/auth?admin=true");
   }, [user, isAdmin, loading, navigate]);
 
   useEffect(() => {
     if (isAdmin) fetchProducts();
   }, [isAdmin]);
 
-  const fetchProducts = async () => {
+  async function fetchProducts() {
     try {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .order("created_at", { ascending: false });
-
+      const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false });
       if (error) throw error;
       setProducts(data || []);
-    } catch (error: any) {
-      console.error("Error fetching products:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch products",
-        variant: "destructive",
-      });
+    } catch (err) {
+      console.error("fetchProducts error", err);
+      toast({ title: "Error", description: "Failed to fetch products", variant: "destructive" });
     } finally {
       setLoadingProducts(false);
     }
-  };
+  }
 
   const handleSignOut = async () => {
     try {
       await signOut();
       navigate("/");
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to sign out",
-        variant: "destructive",
-      });
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to sign out", variant: "destructive" });
     }
   };
 
+  // --- Edit product
   const handleEdit = async (product: Product) => {
     setEditingProduct(product);
+    setDeletedVariantIds([]);
 
-    const existingImages: string[] = [];
-    if (product.image_url) existingImages.push(product.image_url);
-    if (product.image_urls) existingImages.push(...product.image_urls);
-    setEditingImages(existingImages);
+    const imgs: string[] = [];
+    if (product.image_url) imgs.push(product.image_url);
+    if (product.image_urls) imgs.push(...product.image_urls);
+    setEditingImages(imgs);
 
-    const { data: variants, error } = await supabase
-      .from("product_variants")
-      .select("*")
-      .eq("product_id", product.id);
-
+    const { data: variants, error } = await supabase.from("product_variants").select("*").eq("product_id", product.id);
     if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to fetch product variants",
-        variant: "destructive",
-      });
-    } else {
-      setEditingVariants(variants || []);
+      toast({ title: "Error", description: "Failed to fetch product variants", variant: "destructive" });
+      return;
     }
+    setEditingVariants((variants || []).map((v: any) => ({ ...v, id: String(v.id) })));
   };
 
   const handleCancelEdit = () => {
     setEditingProduct(null);
     setEditingImages([]);
     setEditingVariants([]);
+    setDeletedVariantIds([]);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Delete this product?")) return;
-
+  // --- Delete product
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this product?")) return;
     try {
       const { error } = await supabase.from("products").delete().eq("id", id);
       if (error) throw error;
-
-      setProducts(products.filter((product) => product.id !== id));
+      setProducts((prev) => prev.filter((p) => p.id !== id));
       toast({ title: "Success", description: "Product deleted." });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete product",
-        variant: "destructive",
-      });
+    } catch (err) {
+      console.error("delete product", err);
+      toast({ title: "Error", description: "Failed to delete product", variant: "destructive" });
     }
+  }
+
+  // --- Delete variant (UI) -> mark for DB deletion on save
+  const handleDeleteVariant = (id: string) => {
+    const isUUID = /^[0-9a-fA-F-]{36}$/.test(String(id));
+    if (isUUID) setDeletedVariantIds((prev) => [...prev, id]);
+    setEditingVariants((prev) => prev.filter((v) => v.id !== id));
   };
 
-  const handleCreate = async () => {
+  // --- Create product
+  async function handleCreate() {
     try {
       const now = new Date().toISOString();
-
-      const productData = {
+      // send only allowed fields
+      const productData: any = {
         name: newProduct.name ?? "",
-        price: newProduct.price ?? 0,
         description: newProduct.description ?? "",
+        price: newProduct.price ?? 0,
         offer_price: newProduct.offer_price ?? null,
         category: newProduct.category ?? null,
+        hsn_code: newProduct.hsn_code ?? null,
         features: newProduct.features ?? null,
         ingredients: newProduct.ingredients ?? null,
         offers: newProduct.offers ?? null,
@@ -189,23 +174,18 @@ const ProductManagement = () => {
         is_active: newProduct.is_active ?? true,
         featured: newProduct.featured ?? false,
         image_url: newProductImages[0] || null,
-        image_urls:
-          newProductImages.length > 1 ? newProductImages.slice(1) : null,
+        image_urls: newProductImages.length > 1 ? newProductImages.slice(1) : null,
         created_at: now,
         updated_at: now,
       };
 
-      const { data, error } = await supabase
-        .from("products")
-        .insert([productData])
-        .select();
-
+      const { data, error } = await supabase.from("products").insert([productData]).select();
       if (error) throw error;
-      const createdProduct = data?.[0];
+      const created = data?.[0];
 
-      if (createdProduct && newProductVariants.length > 0) {
-        const variantInserts = newProductVariants.map((v) => ({
-          product_id: createdProduct.id,
+      if (created && newProductVariants.length > 0) {
+        const rows = newProductVariants.map((v) => ({
+          product_id: created.id,
           color: v.color ?? null,
           size: v.size ?? null,
           price: v.price ?? null,
@@ -213,97 +193,108 @@ const ProductManagement = () => {
           image_url: v.image_url ?? null,
           created_at: now,
         }));
-
-        await supabase.from("product_variants").insert(variantInserts);
+        const { error: varErr } = await supabase.from("product_variants").insert(rows);
+        if (varErr) throw varErr;
       }
 
-      setProducts([...products, createdProduct]);
+      setProducts((prev) => [created, ...prev]);
       setIsCreating(false);
       setNewProductImages([]);
       setNewProductVariants([]);
-
       toast({ title: "Success", description: "Product created." });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create product",
-        variant: "destructive",
-      });
+    } catch (err) {
+      console.error("create product", err);
+      toast({ title: "Error", description: "Failed to create product", variant: "destructive" });
     }
-  };
+  }
 
-  const handleUpdate = async () => {
+  // --- Update product
+  async function handleUpdate() {
     if (!editingProduct) return;
-
     try {
       const now = new Date().toISOString();
-      const updateData = {
-        ...editingProduct,
+      const updateData: any = {
+        name: editingProduct.name ?? "",
+        description: editingProduct.description ?? "",
+        price: editingProduct.price ?? 0,
+        offer_price: editingProduct.offer_price ?? null,
+        category: editingProduct.category ?? null,
+        hsn_code: (editingProduct as any).hsn_code ?? null,
+        features: editingProduct.features ?? null,
+        ingredients: editingProduct.ingredients ?? null,
+        offers: editingProduct.offers ?? null,
+        stock_quantity: editingProduct.stock_quantity ?? 0,
+        is_active: editingProduct.is_active ?? true,
+        featured: editingProduct.featured ?? false,
         image_url: editingImages[0] || null,
-        image_urls: editingImages.slice(1) || null,
+        image_urls: editingImages.length > 1 ? editingImages.slice(1) : null,
         updated_at: now,
       };
 
-      await supabase
-        .from("products")
-        .update(updateData)
-        .eq("id", editingProduct.id);
+      const { error: updErr } = await supabase.from("products").update(updateData).eq("id", editingProduct.id);
+      if (updErr) throw updErr;
 
+      // delete variants removed by user
+      if (deletedVariantIds.length > 0) {
+        const { error: delErr } = await supabase.from("product_variants").delete().in("id", deletedVariantIds);
+        if (delErr) throw delErr;
+        setDeletedVariantIds([]);
+      }
+
+      // update existing variants or insert new ones
       for (const variant of editingVariants) {
-        const isUUID =
-          typeof variant.id === "string" &&
-          /^[0-9a-fA-F-]{36}$/.test(variant.id);
-
-        if (variant.id && isUUID) {
-          await supabase
+        const isUUID = /^[0-9a-fA-F-]{36}$/.test(String(variant.id ?? ""));
+        if (isUUID) {
+          const { error: vUpdErr } = await supabase
             .from("product_variants")
             .update({
-              color: variant.color || null,
-              size: variant.size || null,
-              price: variant.price || null,
-              stock_quantity: variant.stock_quantity || 0,
-              image_url: variant.image_url || null,
+              color: variant.color ?? null,
+              size: variant.size ?? null,
+              price: variant.price ?? null,
+              stock_quantity: variant.stock_quantity ?? 0,
+              image_url: variant.image_url ?? null,
               updated_at: now,
             })
             .eq("id", variant.id);
+          if (vUpdErr) throw vUpdErr;
         } else {
-          await supabase.from("product_variants").insert([
+          const { error: vInsErr } = await supabase.from("product_variants").insert([
             {
               product_id: editingProduct.id,
-              color: variant.color || null,
-              size: variant.size || null,
-              price: variant.price || null,
-              stock_quantity: variant.stock_quantity || 0,
-              image_url: variant.image_url || null,
+              color: variant.color ?? null,
+              size: variant.size ?? null,
+              price: variant.price ?? null,
+              stock_quantity: variant.stock_quantity ?? 0,
+              image_url: variant.image_url ?? null,
               created_at: now,
             },
           ]);
+          if (vInsErr) throw vInsErr;
         }
       }
 
       await fetchProducts();
       handleCancelEdit();
-
       toast({ title: "Success", description: "Product updated." });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update product",
-        variant: "destructive",
-      });
+    } catch (err) {
+      console.error("update product", err);
+      toast({ title: "Error", description: "Failed to update product", variant: "destructive" });
     }
-  };
+  }
 
-  const handleCSVProductsUploaded = (uploadedProducts: Product[]) => {
-    setProducts([...uploadedProducts, ...products]);
+  // CSV callback
+  const handleCSVProductsUploaded = (createdProducts: Product[]) => {
+    setProducts((prev) => [...createdProducts, ...prev]);
     setShowCSVUpload(false);
+    toast({ title: "Success", description: `Uploaded ${createdProducts.length} products` });
   };
 
+  // render
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Package className="h-8 w-8 animate-spin mx-auto mb-4" />
-        <p>Loading admin dashboard...</p>
+      <div className="h-screen flex items-center justify-center">
+        <Package className="w-6 h-6 animate-spin" />
+        <p className="ml-3">Loading Admin Panel…</p>
       </div>
     );
   }
@@ -312,13 +303,12 @@ const ProductManagement = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* header */}
       <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 lg:px-8 py-6 flex justify-between items-center">
+        <div className="max-w-7xl mx-auto px-4 py-6 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-            <p className="text-gray-600 mt-1">
-              Manage products, orders, inventory, invoices & customers
-            </p>
+            <p className="text-gray-600 mt-1">Manage products, orders, inventory, invoices & customers</p>
           </div>
           <div className="flex items-center gap-4">
             <Button variant="outline" onClick={() => navigate("/")}>
@@ -331,15 +321,9 @@ const ProductManagement = () => {
         </div>
       </div>
 
+      {/* main */}
       <main className="w-full py-6 px-4">
-        {/* ------------------------------ */}
-        {/* ⭐ TABS WITH PERSISTENT VALUE ⭐ */}
-        {/* ------------------------------ */}
-        <Tabs
-          value={activeTab}
-          onValueChange={(v) => setActiveTab(v)}
-          className="space-y-6"
-        >
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)} className="space-y-6">
           <TabsList>
             <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="products">Products</TabsTrigger>
@@ -367,12 +351,7 @@ const ProductManagement = () => {
               </div>
             </div>
 
-            <ProductList
-              products={products}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              loading={loadingProducts}
-            />
+            <ProductList products={products} onEdit={handleEdit} onDelete={handleDelete} loading={loadingProducts} />
           </TabsContent>
 
           <TabsContent value="inventory">
@@ -399,12 +378,7 @@ const ProductManagement = () => {
         {showCSVUpload && (
           <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
             <div className="relative p-6 bg-white rounded shadow-xl max-w-2xl w-full">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowCSVUpload(false)}
-                className="absolute top-2 right-2"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setShowCSVUpload(false)} className="absolute top-2 right-2">
                 ×
               </Button>
               <CSVUpload onProductsUploaded={handleCSVProductsUploaded} />
@@ -420,6 +394,7 @@ const ProductManagement = () => {
             onProductChange={setEditingProduct}
             onImagesChange={setEditingImages}
             onVariantsChange={setEditingVariants}
+            onDeleteVariant={handleDeleteVariant}
             onSave={handleUpdate}
             onCancel={handleCancelEdit}
             isEditing={true}
@@ -434,6 +409,7 @@ const ProductManagement = () => {
             onProductChange={setNewProduct}
             onImagesChange={setNewProductImages}
             onVariantsChange={setNewProductVariants}
+            onDeleteVariant={() => {}}
             onSave={handleCreate}
             onCancel={() => {
               setIsCreating(false);
@@ -446,6 +422,4 @@ const ProductManagement = () => {
       </main>
     </div>
   );
-};
-
-export default ProductManagement;
+}

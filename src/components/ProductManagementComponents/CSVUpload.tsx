@@ -1,235 +1,252 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { Upload, Download, AlertCircle } from 'lucide-react';
-import { Product } from '@/types/product';
+// src/components/ProductManagementComponents/CSVUpload.tsx
+
+import React, { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { Download, Upload } from "lucide-react";
+import { Product } from "@/types/product";
 
 interface CSVUploadProps {
   onProductsUploaded: (products: Product[]) => void;
 }
 
-interface ProductInsert {
-  name: string;
-  description?: string | null;
-  price: number;
-  offer_price?: number | null;
-  category?: string | null;
-  stock_quantity?: number | null;
-  is_active?: boolean | null;
-  featured?: boolean | null;
-  features?: string[] | null;
-  ingredients?: string | null;
-  offers?: string | null;
-  image_url?: string | null;
-  image_urls?: string[] | null;
-}
+const TEMPLATE = `name,description,price,offer_price,category,hsn_code,image_urls,stock_quantity,is_active,featured,features,ingredients,offers,variant_size,variant_color,variant_price,variant_stock,variant_image
+Classic Black Frame,"Stylish black frame",1200,999,eyeglasses,9001,"https://example.com/img1.jpg|https://example.com/img2.jpg",50,true,false,"High quality|Lightweight","Material info","Offer text",M,Black,999,20,https://example.com/var_img1.jpg
+Classic Black Frame,"Stylish black frame",1200,999,eyeglasses,9001,"https://example.com/img1.jpg|https://example.com/img2.jpg",50,true,false,"High quality|Lightweight","Material info","Offer text",L,Black,999,10,https://example.com/var_img2.jpg
+Kids Blue Frame,"Kids frame",800,700,kids,9002,"https://example.com/kid1.jpg",20,true,false,"Kids safe","Plastic","Offer text",S,Blue,700,40,https://example.com/kid_var1.jpg
+`;
 
-const CSVUpload = ({ onProductsUploaded }: CSVUploadProps) => {
-  const [csvFile, setCsvFile] = useState<File | null>(null);
+const parseCSV = (csvText: string) => {
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(",").map((h) => h.trim());
+  const rows: Record<string, string>[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    const values: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let j = 0; j < line.length; j++) {
+      const ch = line[j];
+      if (ch === '"') {
+        inQuotes = !inQuotes;
+      } else if (ch === "," && !inQuotes) {
+        values.push(cur.trim());
+        cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    values.push(cur.trim());
+
+    const obj: Record<string, string> = {};
+    for (let k = 0; k < headers.length; k++) {
+      obj[headers[k]] = values[k] ?? "";
+    }
+    rows.push(obj);
+  }
+
+  return rows;
+};
+
+const CSVUpload: React.FC<CSVUploadProps> = ({ onProductsUploaded }) => {
+  const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
 
   const downloadTemplate = () => {
-    const csvContent = `name,description,price,offer_price,category,stock_quantity,is_active,featured,features,ingredients,offers
-Premium Chicken Breast,Fresh premium chicken breast cuts,299.99,249.99,chicken,50,true,true,"High protein|Low fat|Fresh","Fresh chicken breast","Limited time offer"
-Spicy Red Meat,Premium red meat with spices,499.99,,red_meat,30,true,false,"Premium quality|Spicy","Premium beef",""`
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([TEMPLATE], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
-    link.download = 'products_template.csv';
+    link.download = "products_with_variants_template.csv";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   };
 
-  const parseCSV = (csvText: string): any[] => {
-    const lines = csvText.split('\n').filter(line => line.trim());
-    if (lines.length < 2) return [];
-
-    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-    const rows = lines.slice(1).map(line => {
-      const values = [];
-      let current = '';
-      let inQuotes = false;
-      
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          values.push(current.trim().replace(/"/g, ''));
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      values.push(current.trim().replace(/"/g, ''));
-      
-      return values;
-    });
-
-    return rows.map(row => {
-      const obj: any = {};
-      headers.forEach((header, index) => {
-        obj[header] = row[index] || '';
-      });
-      return obj;
-    });
-  };
-
-  const processCSVData = (data: any[]): ProductInsert[] => {
-    return data.map(row => ({
-      name: row.name || '',
-      description: row.description || null,
-      price: parseFloat(row.price) || 0,
-      offer_price: row.offer_price ? parseFloat(row.offer_price) : null,
-      category: row.category || null,
-      stock_quantity: parseInt(row.stock_quantity) || 0,
-      is_active: row.is_active === 'true' || row.is_active === '1',
-      featured: row.featured === 'true' || row.featured === '1',
-      features: row.features ? row.features.split('|').filter(f => f.trim()) : null,
-      ingredients: row.ingredients || null,
-      offers: row.offers || null,
-      image_url: null,
-      image_urls: null,
-    }));
-  };
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === 'text/csv') {
-      setCsvFile(file);
-    } else {
-      toast({
-        title: "Invalid File",
-        description: "Please select a CSV file",
-        variant: "destructive",
-      });
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    if (f && f.type !== "text/csv" && !f.name.endsWith(".csv")) {
+      toast({ title: "Invalid file", description: "Please upload a .csv file", variant: "destructive" });
+      return;
     }
+    setFile(f);
   };
 
   const handleUpload = async () => {
-    if (!csvFile) {
-      toast({
-        title: "No File Selected",
-        description: "Please select a CSV file to upload",
-        variant: "destructive",
-      });
+    if (!file) {
+      toast({ title: "No file", description: "Please select a CSV file", variant: "destructive" });
       return;
     }
 
     setUploading(true);
     try {
-      const csvText = await csvFile.text();
-      const parsedData = parseCSV(csvText);
-      const products = processCSVData(parsedData);
+      const text = await file.text();
+      const rows = parseCSV(text);
 
-      // Validate required fields
-      const invalidProducts = products.filter(p => !p.name || p.price <= 0);
-      if (invalidProducts.length > 0) {
-        throw new Error(`${invalidProducts.length} products have missing or invalid name/price`);
+      // group by name + hsn_code
+      type Group = {
+        product: {
+          name: string;
+          description?: string | null;
+          price?: number;
+          offer_price?: number | null;
+          category?: string | null;
+          hsn_code?: string | null;
+          image_urls?: string[] | null;
+          stock_quantity?: number;
+          is_active?: boolean;
+          featured?: boolean;
+          features?: string[] | null;
+          ingredients?: string | null;
+          offers?: string | null;
+        };
+        variants: {
+          size?: string | null;
+          color?: string | null;
+          price?: number | null;
+          stock_quantity?: number | null;
+          image_url?: string | null;
+        }[];
+      };
+
+      const groups: Record<string, Group> = {};
+
+      for (const r of rows) {
+        const name = (r["name"] || "").trim();
+        const hsn = (r["hsn_code"] || "").trim();
+        const key = `${name}||${hsn}`;
+
+        const prod = {
+          name: name || "Unnamed Product",
+          description: (r["description"] || "").trim() || null,
+          price: Number(r["price"] || 0) || 0,
+          offer_price: r["offer_price"] ? Number(r["offer_price"]) : null,
+          category: (r["category"] || "").trim() || null,
+          hsn_code: hsn || null,
+          image_urls: (r["image_urls"] || "").trim() ? (r["image_urls"] || "").split("|").map((s) => s.trim()).filter(Boolean) : null,
+          stock_quantity: r["stock_quantity"] ? parseInt(r["stock_quantity"]) || 0 : 0,
+          is_active: (r["is_active"] || "true").toLowerCase() === "true",
+          featured: (r["featured"] || "false").toLowerCase() === "true",
+          features: (r["features"] || "").trim() ? (r["features"] || "").split("|").map((s) => s.trim()).filter(Boolean) : null,
+          ingredients: (r["ingredients"] || "").trim() || null,
+          offers: (r["offers"] || "").trim() || null,
+        };
+
+        const variantPresent = (r["variant_size"] || r["variant_color"] || r["variant_price"] || r["variant_stock"] || r["variant_image"]);
+        const variant = variantPresent
+          ? {
+              size: (r["variant_size"] || "").trim() || null,
+              color: (r["variant_color"] || "").trim() || null,
+              price: r["variant_price"] ? Number(r["variant_price"]) : null,
+              stock_quantity: r["variant_stock"] ? parseInt(r["variant_stock"]) || 0 : 0,
+              image_url: (r["variant_image"] || "").trim() || null,
+            }
+          : null;
+
+        if (!groups[key]) groups[key] = { product: prod, variants: [] };
+        if (variant) groups[key].variants.push(variant);
       }
 
-      // Insert products into database
-      const { data, error } = await supabase
-        .from('products')
-        .insert(products)
-        .select();
+      const createdProducts: Product[] = [];
 
-      if (error) throw error;
+      for (const key of Object.keys(groups)) {
+        const group = groups[key];
+        const now = new Date().toISOString();
 
-      onProductsUploaded(data || []);
-      setCsvFile(null);
-      
-      toast({
-        title: "Success",
-        description: `Successfully uploaded ${data?.length || 0} products`,
-      });
+        const productInsert: any = {
+          name: group.product.name,
+          description: group.product.description,
+          price: group.product.price ?? 0,
+          offer_price: group.product.offer_price ?? null,
+          category: group.product.category ?? null,
+          hsn_code: group.product.hsn_code ?? null,
+          features: group.product.features ?? null,
+          ingredients: group.product.ingredients ?? null,
+          offers: group.product.offers ?? null,
+          stock_quantity: group.product.stock_quantity ?? 0,
+          is_active: group.product.is_active ?? true,
+          featured: group.product.featured ?? false,
+          image_url: group.product.image_urls?.[0] ?? null,
+          image_urls: group.product.image_urls && group.product.image_urls.length > 1 ? group.product.image_urls.slice(1) : null,
+          created_at: now,
+          updated_at: now,
+        };
 
-      // Reset file input
-      const fileInput = document.getElementById('csv-file') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
+        const { data: prodData, error: prodErr } = await supabase.from("products").insert([productInsert]).select();
+        if (prodErr) {
+          console.error("product insert error", prodErr);
+          throw prodErr;
+        }
+        const created = prodData?.[0];
+        if (!created) continue;
 
-    } catch (error: any) {
-      console.error('Error uploading CSV:', error);
-      toast({
-        title: "Upload Failed",
-        description: error.message || "Failed to upload CSV file",
-        variant: "destructive",
-      });
+        if (group.variants.length > 0) {
+          const variantRows = group.variants.map((v) => ({
+            product_id: created.id,
+            color: v.color ?? null,
+            size: v.size ?? null,
+            price: v.price ?? null,
+            stock_quantity: v.stock_quantity ?? 0,
+            image_url: v.image_url ?? null,
+            created_at: now,
+          }));
+          const { error: varErr } = await supabase.from("product_variants").insert(variantRows);
+          if (varErr) {
+            console.error("variant insert error", varErr);
+            throw varErr;
+          }
+        }
+
+        createdProducts.push(created);
+      }
+
+      onProductsUploaded(createdProducts);
+    } catch (err: any) {
+      console.error("CSV upload error", err);
+      toast({ title: "Upload failed", description: err.message || "Failed to upload CSV", variant: "destructive" });
     } finally {
       setUploading(false);
+      setFile(null);
+      const fileInput = document.getElementById("csv-file") as HTMLInputElement | null;
+      if (fileInput) fileInput.value = "";
     }
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <Upload className="h-5 w-5" />
-          <span>Bulk Product Upload</span>
+        <CardTitle className="flex items-center gap-2">
+          <Upload className="h-4 w-4" /> Bulk Upload — Products + Variants
         </CardTitle>
-        <CardDescription>
-          Upload multiple products at once using a CSV file
-        </CardDescription>
+        <CardDescription>CSV supports product-level fields and variant rows. See template.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg">
-          <AlertCircle className="h-4 w-4 text-blue-600" />
-          <div className="text-sm text-blue-700">
-            <p className="font-medium">CSV Format Requirements:</p>
-            <p>Include headers: name, description, price, offer_price, category, stock_quantity, is_active, featured, features, ingredients, offers</p>
-            <p>Separate multiple features with "|" (e.g., "High protein|Low fat")</p>
-          </div>
-        </div>
 
-        <div className="flex items-center space-x-4">
-          <Button
-            onClick={downloadTemplate}
-            variant="outline"
-            className="flex items-center space-x-2"
-          >
-            <Download className="h-4 w-4" />
-            <span>Download Template</span>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={downloadTemplate}>
+            <Download className="h-4 w-4 mr-2" /> Download Template
           </Button>
         </div>
 
-        <div className="space-y-2">
+        <div>
           <Label htmlFor="csv-file">Select CSV File</Label>
-          <Input
-            id="csv-file"
-            type="file"
-            accept=".csv"
-            onChange={handleFileChange}
-            disabled={uploading}
-          />
+          <Input id="csv-file" type="file" accept=".csv" onChange={handleFile} />
         </div>
 
-        {csvFile && (
-          <div className="p-3 border rounded-lg bg-gray-50">
-            <p className="text-sm text-gray-600">
-              Selected file: <span className="font-medium">{csvFile.name}</span>
-            </p>
-            <p className="text-xs text-gray-500">
-              Size: {(csvFile.size / 1024).toFixed(2)} KB
-            </p>
-          </div>
-        )}
-
-        <Button
-          onClick={handleUpload}
-          disabled={!csvFile || uploading}
-          className="w-full"
-        >
-          {uploading ? "Uploading..." : "Upload Products"}
-        </Button>
+        <div>
+          <Button onClick={handleUpload} disabled={!file || uploading} className="w-full">
+            {uploading ? "Uploading..." : "Upload CSV"}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
