@@ -1,4 +1,4 @@
-
+//src\pages\Auth.tsx
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuthContext';

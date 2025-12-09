@@ -1,5 +1,4 @@
 // src/pages/ProductManagement.tsx
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -22,6 +21,10 @@ import InvoicingTabs from "@/components/admin/InvoicingTabs";
 import InvoiceArchive from "@/components/admin/InvoiceArchive";
 import Customers from "@/components/admin/Customers";
 
+// New user/staff components
+import UsersManagement from "@/components/admin/UsersManagement";
+import StaffPage from "@/pages/Staff";
+
 import { Product } from "@/types/product";
 
 interface VariantInput {
@@ -39,7 +42,7 @@ export default function ProductManagement() {
   const { toast } = useToast();
 
   // persist selected tab
-  const [activeTab, setActiveTab] = useState(localStorage.getItem("admin-active-tab") || "orders");
+  const [activeTab, setActiveTab] = useState<string>(localStorage.getItem("admin-active-tab") || "orders");
   useEffect(() => {
     localStorage.setItem("admin-active-tab", activeTab);
   }, [activeTab]);
@@ -326,11 +329,13 @@ export default function ProductManagement() {
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)} className="space-y-6">
           <TabsList>
             <TabsTrigger value="orders">Orders</TabsTrigger>
-            <TabsTrigger value="products">Products</TabsTrigger>
+            {/* <TabsTrigger value="products">Products</TabsTrigger> */}
             <TabsTrigger value="inventory">Inventory</TabsTrigger>
             <TabsTrigger value="sales">Sales & Billing</TabsTrigger>
             <TabsTrigger value="invoice-list">Invoice Archive</TabsTrigger>
             <TabsTrigger value="customers">Customers</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="staff">Staff</TabsTrigger>
             <TabsTrigger value="banner">Banner</TabsTrigger>
           </TabsList>
 
@@ -368,6 +373,20 @@ export default function ProductManagement() {
 
           <TabsContent value="customers">
             <Customers />
+          </TabsContent>
+
+          {/* Users management */}
+          <TabsContent value="users">
+            <div className="py-4">
+              <UsersManagement />
+            </div>
+          </TabsContent>
+
+          {/* Staff view */}
+          <TabsContent value="staff">
+            <div className="py-4">
+              <StaffPage />
+            </div>
           </TabsContent>
 
           <TabsContent value="banner">
