@@ -82,9 +82,51 @@ export default function ProductManagement() {
     updated_at: null,
   });
 
+  // staff permissions state
+  const [staffPermissions, setStaffPermissions] = useState<Record<string, boolean>>({});
+  const [loadingPermissions, setLoadingPermissions] = useState(true);
+
+  // load staff permissions for current user (if not admin)
   useEffect(() => {
-    if (!loading && (!user || !isAdmin)) navigate("/auth?admin=true");
-  }, [user, isAdmin, loading, navigate]);
+    const loadPermissions = async () => {
+      if (!user) return setLoadingPermissions(false);
+      if (isAdmin) {
+        setStaffPermissions({
+          inventory: true,
+          billing: true,
+          invoice_archive: true,
+          customers: true,
+        });
+        setLoadingPermissions(false);
+        return;
+      }
+
+      try {
+        setLoadingPermissions(true);
+        const { data, error } = await supabase
+          .from("staff_permissions")
+          .select("permission_key, allowed")
+          .eq("staff_id", user.id);
+
+        if (error) throw error;
+
+        const map: Record<string, boolean> = {};
+        (data || []).forEach((r: any) => (map[r.permission_key] = !!r.allowed));
+        setStaffPermissions(map);
+      } catch (err) {
+        console.error("loadPermissions", err);
+        toast({ title: "Error", description: "Failed to load permissions", variant: "destructive" });
+      } finally {
+        setLoadingPermissions(false);
+      }
+    };
+
+    loadPermissions();
+  }, [user, isAdmin]);
+
+  useEffect(() => {
+    if (!loading && (!user || (!isAdmin && !staffPermissions))) navigate("/auth?admin=true");
+  }, [user, isAdmin, loading, navigate, staffPermissions]);
 
   useEffect(() => {
     if (isAdmin) fetchProducts();
@@ -293,7 +335,7 @@ export default function ProductManagement() {
   };
 
   // render
-  if (loading) {
+  if (loading || loadingPermissions) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Package className="w-6 h-6 animate-spin" />
@@ -302,7 +344,10 @@ export default function ProductManagement() {
     );
   }
 
-  if (!user || !isAdmin) return null;
+  if (!user || (!isAdmin && !Object.keys(staffPermissions).length)) return null;
+
+  // Helpers to check access (admin bypasses)
+  const can = (permKey: string) => isAdmin || !!staffPermissions[permKey];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -329,14 +374,16 @@ export default function ProductManagement() {
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)} className="space-y-6">
           <TabsList>
             <TabsTrigger value="orders">Orders</TabsTrigger>
-            {/* <TabsTrigger value="products">Products</TabsTrigger> */}
-            <TabsTrigger value="inventory">Inventory</TabsTrigger>
-            <TabsTrigger value="sales">Sales & Billing</TabsTrigger>
-            <TabsTrigger value="invoice-list">Invoice Archive</TabsTrigger>
-            <TabsTrigger value="customers">Customers</TabsTrigger>
-            <TabsTrigger value="users">Users</TabsTrigger>
-            <TabsTrigger value="staff">Staff</TabsTrigger>
-            <TabsTrigger value="banner">Banner</TabsTrigger>
+
+            {can("inventory") && <TabsTrigger value="inventory">Inventory</TabsTrigger>}
+            {can("billing") && <TabsTrigger value="sales">Sales & Billing</TabsTrigger>}
+            {can("invoice_archive") && <TabsTrigger value="invoice-list">Invoice Archive</TabsTrigger>}
+            {can("customers") && <TabsTrigger value="customers">Customers</TabsTrigger>}
+
+            {isAdmin && <TabsTrigger value="users">Users</TabsTrigger>}
+            {isAdmin && <TabsTrigger value="staff">Staff</TabsTrigger>}
+            {isAdmin && <TabsTrigger value="banner">Banner</TabsTrigger>}
+            {isAdmin && <TabsTrigger value="products">Products</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="orders">
@@ -344,53 +391,67 @@ export default function ProductManagement() {
           </TabsContent>
 
           <TabsContent value="products">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">Products</h2>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setShowCSVUpload(true)}>
-                  <Upload className="h-4 w-4 mr-2" /> Bulk Upload
-                </Button>
-                <Button onClick={() => setIsCreating(true)}>
-                  <Plus className="h-4 w-4 mr-2" /> Add Product
-                </Button>
+            {isAdmin ? (
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">Products</h2>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setShowCSVUpload(true)}>
+                    <Upload className="h-4 w-4 mr-2" /> Bulk Upload
+                  </Button>
+                  <Button onClick={() => setIsCreating(true)}>
+                    <Plus className="h-4 w-4 mr-2" /> Add Product
+                  </Button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-6 text-sm text-gray-600">Not authorized</div>
+            )}
 
-            <ProductList products={products} onEdit={handleEdit} onDelete={handleDelete} loading={loadingProducts} />
+            {isAdmin && (
+              <ProductList products={products} onEdit={handleEdit} onDelete={handleDelete} loading={loadingProducts} />
+            )}
           </TabsContent>
 
           <TabsContent value="inventory">
-            <InventoryManagement />
+            {can("inventory") ? <InventoryManagement /> : <div className="p-6 text-red-600">Access denied</div>}
           </TabsContent>
 
           <TabsContent value="sales">
-            <InvoicingTabs />
+            {can("billing") ? <InvoicingTabs /> : <div className="p-6 text-red-600">Access denied</div>}
           </TabsContent>
 
           <TabsContent value="invoice-list">
-            <InvoiceArchive />
+            {can("invoice_archive") ? <InvoiceArchive /> : <div className="p-6 text-red-600">Access denied</div>}
           </TabsContent>
 
           <TabsContent value="customers">
-            <Customers />
+            {can("customers") ? <Customers /> : <div className="p-6 text-red-600">Access denied</div>}
           </TabsContent>
 
           {/* Users management */}
           <TabsContent value="users">
-            <div className="py-4">
-              <UsersManagement />
-            </div>
+            {isAdmin ? (
+              <div className="py-4">
+                <UsersManagement />
+              </div>
+            ) : (
+              <div className="p-6 text-red-600">Access denied</div>
+            )}
           </TabsContent>
 
           {/* Staff view */}
           <TabsContent value="staff">
-            <div className="py-4">
-              <StaffPage />
-            </div>
+            {isAdmin ? (
+              <div className="py-4">
+                <StaffPage />
+              </div>
+            ) : (
+              <div className="p-6 text-red-600">Access denied</div>
+            )}
           </TabsContent>
 
           <TabsContent value="banner">
-            <BannerManagement />
+            {isAdmin ? <BannerManagement /> : <div className="p-6 text-red-600">Access denied</div>}
           </TabsContent>
         </Tabs>
 

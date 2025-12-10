@@ -563,6 +563,42 @@ export type Database = {
         ]
       }
 
+      staff_permissions: {
+  Row: {
+    id: string;
+    staff_id: string;
+    permission_key: string;
+    allowed: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  Insert: {
+    id?: string;
+    staff_id: string;
+    permission_key: string;
+    allowed?: boolean;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Update: {
+    id?: string;
+    staff_id?: string;
+    permission_key?: string;
+    allowed?: boolean;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Relationships: [
+    {
+      foreignKeyName: "staff_permissions_staff_id_fkey";
+      columns: ["staff_id"];
+      referencedRelation: "profiles";
+      referencedColumns: ["id"];
+    }
+  ];
+};
+
+
       /* ============================================================
          🔥 NEW TABLE 3: INVOICE BRANDING
       ============================================================ */

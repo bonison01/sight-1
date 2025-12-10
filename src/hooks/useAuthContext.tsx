@@ -9,9 +9,10 @@ export interface UserProfile {
   id: string;
   email: string | null;
   full_name: string | null;
-  role: 'admin' | 'user';
+  role: 'admin' | 'staff' | 'user';  // ✅ staff added
   created_at: string;
   updated_at: string;
+
   // Address fields
   address_line_1: string | null;
   address_line_2: string | null;
@@ -37,6 +38,7 @@ interface AuthContextType {
   // Computed properties
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isStaff: boolean;   // ✅ added
   isUser: boolean;
   
   // Auth methods
@@ -51,8 +53,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
- * Custom hook to use authentication context
- * Throws error if used outside of AuthProvider
+ * useAuth() Hook
+ * MUST be inside AuthProvider
  */
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
@@ -63,28 +65,27 @@ export const useAuth = (): AuthContextType => {
 };
 
 /**
- * Authentication provider component
- * Manages all authentication state and provides it to child components
+ * Authentication Provider
+ * Handles session, profile, auth state, and exposes helpers.
  */
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  // Core auth state
+  // Base state
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  
+
   // Loading states
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
 
   /**
-   * Fetches user profile from database
-   * Uses security definer function to avoid RLS issues
+   * Fetch user profile from DB
    */
   const fetchProfile = async (userId: string): Promise<void> => {
     try {
       setProfileLoading(true);
       console.log('Fetching profile for user:', userId);
-      
+
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -97,7 +98,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      console.log('Profile fetched successfully:', data);
+      console.log('Profile fetched:', data);
       setProfile(data as UserProfile);
     } catch (error) {
       console.error('Exception fetching profile:', error);
@@ -108,185 +109,173 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   /**
-   * Refresh profile data
+   * Manual refresh
    */
-  const refreshProfile = async (): Promise<void> => {
+  const refreshProfile = async () => {
     if (user?.id) {
       await fetchProfile(user.id);
     }
   };
-
   /**
-   * Initialize authentication state
-   * Sets up auth listener and gets initial session
+   * Initialize Authentication System
+   * Listens for auth changes & loads initial session
    */
   useEffect(() => {
     let mounted = true;
-    console.log('🔧 Initializing authentication system');
+    console.log("🔧 Initializing authentication system");
 
     /**
-     * Handle auth state changes
-     * CRITICAL: Keep this function synchronous to prevent deadlocks
+     * Handler for auth state changes
      */
     const handleAuthChange = async (event: string, session: Session | null) => {
       if (!mounted) return;
 
-      console.log('🔄 Auth state changed:', event, session?.user?.email || 'No user');
+      console.log("🔄 Auth state changed:", event, session?.user?.email || "No user");
 
-      // Update session and user state immediately (synchronous)
+      // Set session and user immediately
       setSession(session);
       setUser(session?.user ?? null);
 
-      // Handle profile fetching asynchronously
+      // Profile fetch occurs async
       if (session?.user) {
-        // Use setTimeout to defer async operations and prevent deadlocks
         setTimeout(() => {
-          if (mounted) {
-            fetchProfile(session.user.id);
-          }
+          if (mounted) fetchProfile(session.user.id);
         }, 0);
       } else {
-        // Clear profile if no user
         setProfile(null);
         setProfileLoading(false);
       }
 
-      // Auth initialization complete
       setLoading(false);
     };
 
-    // Set up auth state listener
+    // Listen to Supabase auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(handleAuthChange);
 
-    // Get initial session
-    const initializeAuth = async () => {
+    // Load initial session
+    const initialize = async () => {
       try {
-        console.log('🚀 Getting initial session');
         const { data: { session }, error } = await supabase.auth.getSession();
-        
+
         if (!mounted) return;
 
         if (error) {
-          console.error('❌ Error getting initial session:', error);
+          console.error("❌ Error getting initial session:", error);
           setLoading(false);
           return;
         }
 
-        console.log('✅ Initial session retrieved:', session?.user?.email || 'No session');
-        
-        // Trigger auth change handler with initial session
-        await handleAuthChange('INITIAL_SESSION', session);
-      } catch (error) {
-        console.error('💥 Exception during auth initialization:', error);
-        if (mounted) {
-          setLoading(false);
-        }
+        console.log("🚀 Initial session:", session?.user?.email || "No session");
+        await handleAuthChange("INITIAL_SESSION", session);
+      } catch (err) {
+        console.error("💥 Exception initializing auth:", err);
+        if (mounted) setLoading(false);
       }
     };
 
-    initializeAuth();
+    initialize();
 
-    // Cleanup
+    // Cleanup listener
     return () => {
-      console.log('🧹 Cleaning up auth context');
+      console.log("🧹 Cleaning up auth listener");
       mounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
   /**
-   * Sign in with email and password
+   * Sign In
    */
   const signIn = async (email: string, password: string) => {
     try {
-      console.log('🔑 Attempting sign in for:', email);
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
+      console.log("🔑 Signing in:", email);
+
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      
+
       if (error) {
-        console.error('❌ Sign in error:', error);
+        console.error("❌ Sign in error:", error);
         return { error };
       }
 
-      console.log('✅ Sign in successful for:', data.user?.email);
+      console.log("✅ Sign in successful");
       return { error: null };
     } catch (error) {
-      console.error('💥 Sign in exception:', error);
+      console.error("💥 Sign in exception:", error);
       return { error };
     }
   };
 
   /**
-   * Sign up with email, password, and optional full name
+   * Sign Up
    */
   const signUp = async (email: string, password: string, fullName?: string, phone?: string) => {
     try {
-      console.log('📝 Attempting sign up for:', email);
-      
+      console.log("📝 Signing up:", email);
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        data: {
-          full_name: fullName || '',
-          phone: phone || '',
-        },
-      },
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            full_name: fullName || "",
+            phone: phone || "",
+          }
+        }
       });
 
       if (error) {
-        console.error('❌ Sign up error:', error);
+        console.error("❌ Sign up error:", error);
         return { error };
       }
 
-      console.log('✅ Sign up successful for:', data.user?.email);
+      console.log("✅ Signup complete. Email verification required.");
       return { error: null };
+
     } catch (error) {
-      console.error('💥 Sign up exception:', error);
+      console.error("💥 Sign up exception:", error);
       return { error };
     }
   };
 
   /**
-   * Sign out user and clear all state
+   * Sign Out
    */
-  const signOut = async (): Promise<void> => {
+  const signOut = async () => {
     try {
-      console.log('🚪 Signing out user');
-      
-      const { error } = await supabase.auth.signOut();
-      
-      if (error) {
-        console.error('❌ Sign out error:', error);
-      }
+      console.log("🚪 Signing out");
 
-      // Clear all state immediately
+      const { error } = await supabase.auth.signOut();
+      if (error) console.error("❌ Sign out error:", error);
+
       setUser(null);
       setSession(null);
       setProfile(null);
       setLoading(false);
       setProfileLoading(false);
-      
-      console.log('✅ User signed out successfully');
-      
-      // Navigate to home page after successful sign out
-      if (typeof window !== 'undefined') {
-        window.location.href = '/';
+
+      if (typeof window !== "undefined") {
+        window.location.href = "/";
       }
+
     } catch (error) {
-      console.error('💥 Sign out exception:', error);
+      console.error("💥 Sign out exception:", error);
     }
   };
 
-  // Computed properties
+  /**
+   * Computed properties
+   */
   const isAuthenticated = !!user && !!session;
-  const isAdmin = profile?.role === 'admin';
-  const isUser = profile?.role === 'user';
-
+  const isAdmin = profile?.role === "admin";
+  const isStaff = profile?.role === "staff";   // ✅ ADDED
+  const isUser = profile?.role === "user";
+  /**
+   * Auth context value
+   */
   const value: AuthContextType = {
     // State
     user,
@@ -294,12 +283,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     profile,
     loading,
     profileLoading,
-    
+
     // Computed
     isAuthenticated,
     isAdmin,
+    isStaff,   // ✅ included
     isUser,
-    
+
     // Methods
     signIn,
     signUp,

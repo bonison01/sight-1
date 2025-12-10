@@ -1,4 +1,4 @@
-//src\pages\Auth.tsx
+//src/pages/Auth.tsx
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuthContext';
@@ -32,7 +32,7 @@ const Auth = () => {
   const [resetStep, setResetStep] = useState<'request' | 'verify'>('request');
 
   // Hooks
-  const { signIn, signUp, isAuthenticated, isAdmin, loading } = useAuth();
+  const { signIn, signUp, isAuthenticated, isAdmin, isStaff, loading } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -45,19 +45,27 @@ const Auth = () => {
    */
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      console.log('🔄 User authenticated, redirecting...', { isAdmin, isAdminMode });
-      
+      console.log('🔄 User authenticated, redirecting...', { isAdmin, isStaff, isAdminMode });
+
       if (isAdmin) {
         navigate('/admin', { replace: true });
-      } else if (isAdminMode) {
-        // If they're trying to access admin but aren't admin, show error
+        return;
+      }
+
+      if (isStaff) {
+        navigate('/staff-dashboard', { replace: true });
+        return;
+      }
+
+      if (isAdminMode && !isAdmin && !isStaff) {
         setError('You do not have admin privileges');
         return;
-      } else {
-        navigate('/customer-dashboard', { replace: true });
       }
+
+      navigate('/customer-dashboard', { replace: true });
     }
-  }, [isAuthenticated, isAdmin, loading, navigate, isAdminMode]);
+  }, [isAuthenticated, isAdmin, isStaff, loading, navigate, isAdminMode]);
+
 
   /**
    * Reset form fields
@@ -73,7 +81,6 @@ const Auth = () => {
     setNewPassword('');
     setResetStep('request');
   };
-
   /**
    * Handle login form submission
    */
@@ -106,7 +113,7 @@ const Auth = () => {
         description: "Welcome back!",
       });
 
-      // Note: Redirect will be handled by useEffect when auth state updates
+      // Redirect handled in useEffect
     } catch (error: any) {
       console.error('💥 Login exception:', error);
       setError('An unexpected error occurred');
@@ -199,7 +206,6 @@ const Auth = () => {
         return;
       }
 
-      // data is an array with one result
       const result = data?.[0];
       
       if (!result?.success) {
@@ -222,7 +228,6 @@ const Auth = () => {
       setActionLoading(false);
     }
   };
-
   /**
    * Handle password reset with code verification
    */
@@ -296,7 +301,7 @@ const Auth = () => {
     );
   }
 
-  // If already authenticated, let useEffect handle the redirect
+  // If already authenticated, let useEffect handle redirect
   if (!loading && isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -322,6 +327,7 @@ const Auth = () => {
             {isAdminMode ? 'Sign in to access the admin dashboard' : 'Sign in to your account or create a new one'}
           </CardDescription>
         </CardHeader>
+
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-3">
@@ -329,7 +335,8 @@ const Auth = () => {
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
               <TabsTrigger value="reset">Reset</TabsTrigger>
             </TabsList>
-            
+
+            {/* LOGIN TAB */}
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
@@ -344,6 +351,7 @@ const Auth = () => {
                     disabled={actionLoading}
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="login-password">Password</Label>
                   <Input
@@ -356,18 +364,20 @@ const Auth = () => {
                     disabled={actionLoading}
                   />
                 </div>
+
                 {error && (
                   <Alert variant="destructive">
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
+
                 <Button type="submit" className="w-full" disabled={actionLoading}>
                   {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {actionLoading ? 'Signing In...' : 'Sign In'}
                 </Button>
               </form>
             </TabsContent>
-            
+            {/* SIGNUP TAB */}
             <TabsContent value="signup">
               <form onSubmit={handleSignUp} className="space-y-4">
                 <div className="space-y-2">
@@ -382,6 +392,7 @@ const Auth = () => {
                     disabled={actionLoading}
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="signup-email">Email</Label>
                   <Input
@@ -394,6 +405,7 @@ const Auth = () => {
                     disabled={actionLoading}
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="signup-phone">Phone Number</Label>
                   <Input
@@ -406,6 +418,7 @@ const Auth = () => {
                     disabled={actionLoading}
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="signup-password">Password</Label>
                   <Input
@@ -419,6 +432,7 @@ const Auth = () => {
                     minLength={6}
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="confirm-password">Confirm Password</Label>
                   <Input
@@ -432,18 +446,21 @@ const Auth = () => {
                     minLength={6}
                   />
                 </div>
+
                 {error && (
                   <Alert variant="destructive">
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
+
                 <Button type="submit" className="w-full" disabled={actionLoading}>
                   {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {actionLoading ? 'Creating Account...' : 'Create Account'}
                 </Button>
               </form>
             </TabsContent>
-            
+
+            {/* RESET TAB */}
             <TabsContent value="reset">
               {resetStep === 'request' ? (
                 <form onSubmit={handleRequestReset} className="space-y-4">
@@ -459,6 +476,7 @@ const Auth = () => {
                       disabled={actionLoading}
                     />
                   </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="reset-phone">Phone Number</Label>
                     <Input
@@ -471,11 +489,13 @@ const Auth = () => {
                       disabled={actionLoading}
                     />
                   </div>
+
                   {error && (
                     <Alert variant="destructive">
                       <AlertDescription>{error}</AlertDescription>
                     </Alert>
                   )}
+
                   <Button type="submit" className="w-full" disabled={actionLoading}>
                     {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {actionLoading ? 'Generating Code...' : 'Get Reset Code'}
@@ -496,6 +516,7 @@ const Auth = () => {
                       maxLength={6}
                     />
                   </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="new-password">New Password</Label>
                     <Input
@@ -509,16 +530,19 @@ const Auth = () => {
                       minLength={6}
                     />
                   </div>
+
                   {error && (
                     <Alert variant="destructive">
                       <AlertDescription>{error}</AlertDescription>
                     </Alert>
                   )}
+
                   <div className="space-y-2">
                     <Button type="submit" className="w-full" disabled={actionLoading}>
                       {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       {actionLoading ? 'Resetting Password...' : 'Reset Password'}
                     </Button>
+
                     <Button
                       type="button"
                       variant="outline"
@@ -533,7 +557,8 @@ const Auth = () => {
               )}
             </TabsContent>
           </Tabs>
-          
+
+          {/* FOOTER LINKS */}
           <div className="mt-6 text-center space-y-2">
             {!isAdminMode && (
               <Button
